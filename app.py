@@ -1,14 +1,15 @@
 import streamlit as st
 import pandas as pd
 from io import BytesIO
-import openpyxl
+
 # Set the title of the Streamlit app
-st.title('Top 70% Consuming Items Finder')
+st.title('Items Finder')
 
 # Description
 st.write("""
-This app allows you to upload a sales data Excel file and identifies the top 70% highly consuming items based on quantity.
-Please ensure your file has columns named 'Item' and 'Quantity'.
+This app allows you to upload a sales data Excel file and identifies the most selling items based on total quantity sold.
+You can also manually input the available quantity for each item and save the result as a new Excel file.
+Please ensure your file has columns named 'Item', 'Quantity', 'Category', and 'Purchase Qty in last 6 months'.
 """)
 
 # File uploader
@@ -26,40 +27,40 @@ if uploaded_file is not None:
         st.dataframe(df)
         
         # Check if the necessary columns exist
-        if 'Item' in df.columns and 'Quantity' in df.columns:
+        if 'Item' in df.columns and 'Quantity' in df.columns and 'Category' in df.columns and 'Purchase Qty in last 6 months' in df.columns:
             st.write("Required columns found in the data.")
             
+            # Get unique categories
+            categories = df['Category'].unique()
+            
+            # Select category
+            selected_category = st.selectbox("Select a Category", categories)
+            
+            # Filter data based on the selected category
+            filtered_df = df[df['Category'] == selected_category]
+            
+            # Exclude items with zero quantity in 'Purchase Qty in last 6 months'
+            filtered_df = filtered_df[filtered_df['Purchase Qty in last 6 months'] > 0]
+            
             # Aggregate the data by item and calculate the sum of quantities
-            df_agg = df.groupby('Item', as_index=False)['Quantity'].sum()
+            df_agg = filtered_df.groupby('Item', as_index=False)['Quantity'].sum()
             
             # Sort the dataframe by quantity in descending order
             df_sorted = df_agg.sort_values(by='Quantity', ascending=False)
             
-            # Calculate the cumulative sum of quantities
-            df_sorted['CumulativeQuantity'] = df_sorted['Quantity'].cumsum()
+            # Add a column for available quantities
+            df_sorted['Available Quantity'] = None
             
-            # Calculate the total quantity
-            total_quantity = df_sorted['Quantity'].sum()
-            
-            # Determine the threshold for the top 70%
-            threshold = total_quantity * 0.7
-            
-            # Find the top 70% consuming items
-            df_sorted['CumulativePercentage'] = df_sorted['CumulativeQuantity'] / total_quantity
-            top_70_percent_items = df_sorted[df_sorted['CumulativePercentage'] <= 0.7]
-            
-            # Display the top 70% consuming items
-            st.write("Top 70% Consuming Items:")
-            top_70_percent_items['Available Quantity'] = None
-            for i, row in top_70_percent_items.iterrows():
+            for i, row in df_sorted.iterrows():
                 available_qty = st.text_input(f"Available Quantity for {row['Item']}", key=row['Item'])
-                top_70_percent_items.at[i, 'Available Quantity'] = available_qty
-            # Display the dataframe with the available quantities
-            st.write("Top 10 Most Selling Items with Available Quantities:")
-            st.dataframe(top_70_percent_items[['Item', 'Quantity', 'Available Quantity']])
+                df_sorted.at[i, 'Available Quantity'] = available_qty
             
-            # Display a bar chart for the top 70% consuming items
-            st.bar_chart(top_70_percent_items.set_index('Item')['Quantity'])
+            # Display the dataframe with the available quantities
+            st.write("Most Selling Items with Available Quantities:")
+            st.dataframe(df_sorted[['Item', 'Quantity', 'Available Quantity']])
+            
+            # Display a bar chart for the most selling items
+            st.bar_chart(df_sorted.set_index('Item')['Quantity'])
 
             # Function to convert the dataframe to an Excel file in memory
             def to_excel(df):
@@ -70,7 +71,7 @@ if uploaded_file is not None:
                 return processed_data
 
             # Filter the dataframe to include only the 'Item' and 'Available Quantity' columns
-            save_df = top_70_percent_items[['Item', 'Available Quantity']]
+            save_df = df_sorted[['Item', 'Available Quantity']]
 
             # Convert the filtered dataframe to Excel format
             df_xlsx = to_excel(save_df)
@@ -79,11 +80,11 @@ if uploaded_file is not None:
             st.download_button(
                 label="Save to Excel",
                 data=df_xlsx,
-                file_name='top_70_percent_items_with_available_qty.xlsx',
+                file_name='items_with_available_qty.xlsx',
                 mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             )
         else:
-            st.error("The uploaded file does not contain the required columns 'Item' and 'Quantity'.")
+            st.error("The uploaded file does not contain the required columns 'Item', 'Quantity', 'Category', and 'Purchase Qty in last 6 months'.")
     except Exception as e:
         st.error(f"An error occurred: {e}")
 else:
